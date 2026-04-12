@@ -1,0 +1,38 @@
+# SECURITY - Never push these
+.env
+.env.local
+.env.production
+.env.development
+client/.env
+server/.env
+
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Database
+*.db
+*.sqlite
+server/database/sqlite.db
+
+# Uploaded Files
+server/uploads/*
+!server/uploads/.gitkeep
+
+# React Build
+client/dist/
+client/build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Not needed for Render
+Procfile
+client/vercel.json

@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: #faf9f7;
+  color: #1a120b;
+}
+
+.font-display { font-family: 'Playfair Display', Georgia, serif; }
+
+/* Leaflet z-index fix */
+.leaflet-pane { z-index: 1 !important; }
+.leaflet-top, .leaflet-bottom { z-index: 2 !important; }
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #f1f1f1; }
+::-webkit-scrollbar-thumb { background: #c8a87a; border-radius: 3px; }
+
+/* Geosearch fix */
+.leaflet-geosearch-bar { z-index: 999 !important; }
+
+@layer components {
+  .btn-primary {
+    @apply bg-brand-600 hover:bg-brand-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand-200 active:translate-y-0;
+  }
+  .btn-secondary {
+    @apply bg-white border border-earth-200 text-earth-700 font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 hover:border-earth-400 hover:bg-earth-50;
+  }
+  .card {
+    @apply bg-white rounded-2xl border border-earth-100 shadow-sm;
+  }
+  .input-field {
+    @apply w-full px-4 py-3 bg-earth-50 border border-earth-200 rounded-xl focus:ring-2 focus:ring-brand-400 focus:border-brand-400 focus:bg-white transition-all outline-none font-body text-sm;
+  }
+  .label {
+    @apply block text-xs font-semibold text-earth-600 uppercase tracking-wider mb-1.5;
+  }
+  .badge-veg {
+    @apply inline-flex items-center gap-1 bg-brand-100 text-brand-700 text-xs font-bold px-2.5 py-1 rounded-full;
+  }
+  .badge-nonveg {
+    @apply inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-bold px-2.5 py-1 rounded-full;
+  }
+  .status-pending { @apply bg-warm-100 text-warm-700; }
+  .status-accepted { @apply bg-brand-100 text-brand-700; }
+  .status-out_for_delivery { @apply bg-blue-100 text-blue-700; }
+  .status-delivered { @apply bg-brand-100 text-brand-800; }
+  .status-rejected { @apply bg-red-100 text-red-700; }
+}
