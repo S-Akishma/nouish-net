@@ -177,19 +177,28 @@ router.get('/analytics', auth, async (req, res) => {
       db.execute({ sql: 'SELECT status, COUNT(*) as count FROM requests GROUP BY status', args: [] }),
     ]);
 
+    // Convert BigInt values from Turso/libsql to plain numbers
+    const toNum = (v) => v === null || v === undefined ? 0 : Number(v);
+    const fixRow = (row) => {
+      const out = {};
+      for (const k of Object.keys(row)) out[k] = typeof row[k] === 'bigint' ? Number(row[k]) : row[k];
+      return out;
+    };
+    const fixRows = (rows) => rows.map(fixRow);
+
     res.json({
-      totalDelivered: totalDelivered.rows[0],
-      totalPending: totalPending.rows[0],
-      totalFoods: totalFoods.rows[0],
-      totalProviders: totalProviders.rows[0],
-      totalReceivers: totalReceivers.rows[0],
-      servingsDelivered: servingsDelivered.rows[0],
-      foodByType: foodByType.rows,
-      foodByCategory: foodByCategory.rows,
-      topProviders: topProviders.rows,
-      locationActivity: locationActivity.rows,
-      monthlyActivity: monthlyActivity.rows,
-      statusBreakdown: statusBreakdown.rows,
+      totalDelivered: fixRow(totalDelivered.rows[0] || { count: 0 }),
+      totalPending:   fixRow(totalPending.rows[0]   || { count: 0 }),
+      totalFoods:     fixRow(totalFoods.rows[0]     || { count: 0 }),
+      totalProviders: fixRow(totalProviders.rows[0] || { count: 0 }),
+      totalReceivers: fixRow(totalReceivers.rows[0] || { count: 0 }),
+      servingsDelivered: fixRow(servingsDelivered.rows[0] || { total: 0 }),
+      foodByType:      fixRows(foodByType.rows),
+      foodByCategory:  fixRows(foodByCategory.rows),
+      topProviders:    fixRows(topProviders.rows),
+      locationActivity: fixRows(locationActivity.rows),
+      monthlyActivity:  fixRows(monthlyActivity.rows),
+      statusBreakdown:  fixRows(statusBreakdown.rows),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

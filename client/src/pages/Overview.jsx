@@ -132,9 +132,9 @@ export default function Overview() {
     </div>
   );
 
-  const typeData = (data?.foodByType || []).map(d => ({ label: d.food_type || 'unknown', value: d.count }));
-  const catData  = (data?.foodByCategory || []).map(d => ({ label: d.food_category || 'unknown', value: d.count }));
-  const statusData = (data?.statusBreakdown || []).map(d => ({ label: d.status, value: d.count }));
+  const typeData   = (data?.foodByType || []).map(d => ({ label: d.food_type || 'unknown', value: Number(d.count) || 0 }));
+  const catData    = (data?.foodByCategory || []).map(d => ({ label: d.food_category || 'unknown', value: Number(d.count) || 0 }));
+  const statusData = (data?.statusBreakdown || []).map(d => ({ label: d.status, value: Number(d.count) || 0 }));
 
   return (
     <div className="min-h-screen bg-earth-50 font-body">
