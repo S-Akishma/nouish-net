@@ -3,7 +3,6 @@ const db = require('../database');
 const { auth, restrictTo } = require('../middleware/auth');
 const router = express.Router();
 
-// Safe string helper - prevents [object Object]
 function safeStr(val, fallback = '') {
   if (!val) return fallback;
   if (typeof val === 'string') return val;
@@ -13,138 +12,188 @@ function safeStr(val, fallback = '') {
 
 function buildRouteData(data, status) {
   return JSON.stringify({
-    pickup: {
-      lat: data.food_lat,
-      lng: data.food_lng,
-      address: safeStr(data.food_addr, 'Donor location')
-    },
-    dropoff: {
-      lat: data.orphanage_lat,
-      lng: data.orphanage_lng,
-      address: safeStr(data.orphanage_addr, 'Receiver location')
-    },
+    pickup: { lat: data.food_lat, lng: data.food_lng, address: safeStr(data.food_addr, 'Donor location') },
+    dropoff: { lat: data.orphanage_lat, lng: data.orphanage_lng, address: safeStr(data.orphanage_addr, 'Receiver location') },
     status,
     updated_at: new Date().toISOString()
   });
 }
 
 // Orphanage requests food
-router.post('/', auth, restrictTo('orphanage'), (req, res) => {
-  const { food_id } = req.body;
-  const orphanage_id = req.user.id;
-  db.get('SELECT id FROM requests WHERE food_id=? AND orphanage_id=? AND status!=?',
-    [food_id, orphanage_id, 'rejected'], (err, existing) => {
-      if (err) return res.status(500).json({ error: err.message });
-      if (existing) return res.status(400).json({ message: 'Already requested' });
-      db.run('INSERT INTO requests (food_id, orphanage_id, status) VALUES (?,?,?)',
-        [food_id, orphanage_id, 'pending'],
-        function(e) {
-          if (e) return res.status(500).json({ error: e.message });
-          res.status(201).json({ message: 'Request submitted', requestId: this.lastID });
-        });
+router.post('/', auth, restrictTo('orphanage'), async (req, res) => {
+  try {
+    const { food_id } = req.body;
+    const orphanage_id = req.user.id;
+
+    const existing = await db.execute({
+      sql: 'SELECT id FROM requests WHERE food_id=? AND orphanage_id=? AND status!=?',
+      args: [food_id, orphanage_id, 'rejected']
     });
+    if (existing.rows.length > 0)
+      return res.status(400).json({ message: 'Already requested' });
+
+    const result = await db.execute({
+      sql: 'INSERT INTO requests (food_id, orphanage_id, status) VALUES (?,?,?)',
+      args: [food_id, orphanage_id, 'pending']
+    });
+    res.status(201).json({ message: 'Request submitted', requestId: Number(result.lastInsertRowid) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Accept / Reject
-router.put('/status', auth, restrictTo('provider', 'admin'), (req, res) => {
-  const { request_id, status } = req.body;
-  if (!['accepted', 'rejected'].includes(status))
-    return res.status(400).json({ message: 'Invalid status' });
-  db.run('UPDATE requests SET status=? WHERE id=?', [status, request_id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+router.put('/status', auth, restrictTo('provider', 'admin'), async (req, res) => {
+  try {
+    const { request_id, status } = req.body;
+    if (!['accepted', 'rejected'].includes(status))
+      return res.status(400).json({ message: 'Invalid status' });
+
+    await db.execute({ sql: 'UPDATE requests SET status=? WHERE id=?', args: [status, request_id] });
+
     if (status === 'accepted') {
-      db.get(`SELECT f.lat as food_lat, f.lng as food_lng, f.location_address as food_addr,
+      const dataRes = await db.execute({
+        sql: `SELECT f.lat as food_lat, f.lng as food_lng, f.location_address as food_addr,
                u.lat as orphanage_lat, u.lng as orphanage_lng, u.location_address as orphanage_addr
-        FROM requests r JOIN food_listings f ON r.food_id=f.id JOIN users u ON r.orphanage_id=u.id
-        WHERE r.id=?`, [request_id], (e, data) => {
-        if (!data) return;
-        const routeData = buildRouteData(data, 'accepted');
-        db.get('SELECT id FROM delivery WHERE request_id=?', [request_id], (e2, ex) => {
-          if (ex) db.run('UPDATE delivery SET status=?,route_data=?,updated_at=CURRENT_TIMESTAMP WHERE request_id=?', ['accepted', routeData, request_id]);
-          else db.run('INSERT INTO delivery (request_id,partner_name,contact,status,route_data) VALUES (?,?,?,?,?)', [request_id,'NourishNet Volunteer','TBA','accepted',routeData]);
-        });
+              FROM requests r JOIN food_listings f ON r.food_id=f.id JOIN users u ON r.orphanage_id=u.id
+              WHERE r.id=?`,
+        args: [request_id]
       });
+
+      if (dataRes.rows.length > 0) {
+        const data = dataRes.rows[0];
+        const routeData = buildRouteData(data, 'accepted');
+
+        const exRes = await db.execute({ sql: 'SELECT id FROM delivery WHERE request_id=?', args: [request_id] });
+        if (exRes.rows.length > 0) {
+          await db.execute({
+            sql: 'UPDATE delivery SET status=?,route_data=?,updated_at=CURRENT_TIMESTAMP WHERE request_id=?',
+            args: ['accepted', routeData, request_id]
+          });
+        } else {
+          await db.execute({
+            sql: 'INSERT INTO delivery (request_id,partner_name,contact,status,route_data) VALUES (?,?,?,?,?)',
+            args: [request_id, 'NourishNet Volunteer', 'TBA', 'accepted', routeData]
+          });
+        }
+      }
     }
+
     res.json({ message: `Request ${status}` });
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Update delivery milestone
-router.put('/delivery', auth, restrictTo('provider', 'admin'), (req, res) => {
-  const { request_id, status, partner_name, contact } = req.body;
-  if (!['pending','accepted','out_for_delivery','delivered'].includes(status))
-    return res.status(400).json({ message: 'Invalid delivery status' });
-  db.get(`SELECT f.lat as food_lat, f.lng as food_lng, f.location_address as food_addr,
-           u.lat as orphanage_lat, u.lng as orphanage_lng, u.location_address as orphanage_addr
-    FROM requests r JOIN food_listings f ON r.food_id=f.id JOIN users u ON r.orphanage_id=u.id
-    WHERE r.id=?`, [request_id], (err, data) => {
-    const routeData = data ? buildRouteData(data, status) : null;
-    db.run('UPDATE delivery SET partner_name=?,contact=?,status=?,route_data=?,updated_at=CURRENT_TIMESTAMP WHERE request_id=?',
-      [partner_name||'NourishNet Volunteer', contact||'TBA', status, routeData, request_id], (e) => {
-        if (e) return res.status(500).json({ error: e.message });
-        db.run('UPDATE requests SET status=? WHERE id=?', [status, request_id], (e2) => {
-          if (e2) return res.status(500).json({ error: e2.message });
-          res.json({ message: `Delivery updated to ${status}` });
-        });
-      });
-  });
+router.put('/delivery', auth, restrictTo('provider', 'admin'), async (req, res) => {
+  try {
+    const { request_id, status, partner_name, contact } = req.body;
+    if (!['pending', 'accepted', 'out_for_delivery', 'delivered'].includes(status))
+      return res.status(400).json({ message: 'Invalid delivery status' });
+
+    const dataRes = await db.execute({
+      sql: `SELECT f.lat as food_lat, f.lng as food_lng, f.location_address as food_addr,
+             u.lat as orphanage_lat, u.lng as orphanage_lng, u.location_address as orphanage_addr
+            FROM requests r JOIN food_listings f ON r.food_id=f.id JOIN users u ON r.orphanage_id=u.id
+            WHERE r.id=?`,
+      args: [request_id]
+    });
+
+    const routeData = dataRes.rows.length > 0 ? buildRouteData(dataRes.rows[0], status) : null;
+
+    await db.execute({
+      sql: 'UPDATE delivery SET partner_name=?,contact=?,status=?,route_data=?,updated_at=CURRENT_TIMESTAMP WHERE request_id=?',
+      args: [partner_name || 'NourishNet Volunteer', contact || 'TBA', status, routeData, request_id]
+    });
+
+    await db.execute({ sql: 'UPDATE requests SET status=? WHERE id=?', args: [status, request_id] });
+
+    res.json({ message: `Delivery updated to ${status}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Provider incoming
-router.get('/my-requests', auth, restrictTo('provider'), (req, res) => {
-  db.all(`SELECT r.*, f.food_name, f.food_type, f.image, f.quantity,
-           f.lat as food_lat, f.lng as food_lng, f.location_address as food_addr,
-           u.name as orphanage_name, u.lat as orphanage_lat, u.lng as orphanage_lng,
-           u.location_address as orphanage_addr,
-           d.partner_name, d.contact, d.route_data, d.updated_at as delivery_updated
-    FROM requests r JOIN food_listings f ON r.food_id=f.id JOIN users u ON r.orphanage_id=u.id
-    LEFT JOIN delivery d ON d.request_id=r.id
-    WHERE f.provider_id=? ORDER BY r.created_at DESC`, [req.user.id], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
+// Provider incoming requests
+router.get('/my-requests', auth, restrictTo('provider'), async (req, res) => {
+  try {
+    const result = await db.execute({
+      sql: `SELECT r.*, f.food_name, f.food_type, f.image, f.quantity,
+             f.lat as food_lat, f.lng as food_lng, f.location_address as food_addr,
+             u.name as orphanage_name, u.lat as orphanage_lat, u.lng as orphanage_lng,
+             u.location_address as orphanage_addr,
+             d.partner_name, d.contact, d.route_data, d.updated_at as delivery_updated
+            FROM requests r JOIN food_listings f ON r.food_id=f.id JOIN users u ON r.orphanage_id=u.id
+            LEFT JOIN delivery d ON d.request_id=r.id
+            WHERE f.provider_id=? ORDER BY r.created_at DESC`,
+      args: [req.user.id]
+    });
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Orphanage sent
-router.get('/sent', auth, restrictTo('orphanage'), (req, res) => {
-  db.all(`SELECT r.*, f.food_name, f.food_type, f.image, f.quantity, f.prep_time, f.expiry_time,
-           f.lat as food_lat, f.lng as food_lng, f.location_address as food_addr,
-           u.name as provider_name, u.provider_type,
-           d.partner_name, d.contact, d.route_data, d.status as delivery_status, d.updated_at as delivery_updated
-    FROM requests r JOIN food_listings f ON r.food_id=f.id JOIN users u ON f.provider_id=u.id
-    LEFT JOIN delivery d ON d.request_id=r.id
-    WHERE r.orphanage_id=? ORDER BY r.created_at DESC`, [req.user.id], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
+// Orphanage sent requests
+router.get('/sent', auth, restrictTo('orphanage'), async (req, res) => {
+  try {
+    const result = await db.execute({
+      sql: `SELECT r.*, f.food_name, f.food_type, f.image, f.quantity, f.prep_time, f.expiry_time,
+             f.lat as food_lat, f.lng as food_lng, f.location_address as food_addr,
+             u.name as provider_name, u.provider_type,
+             d.partner_name, d.contact, d.route_data, d.status as delivery_status, d.updated_at as delivery_updated
+            FROM requests r JOIN food_listings f ON r.food_id=f.id JOIN users u ON f.provider_id=u.id
+            LEFT JOIN delivery d ON d.request_id=r.id
+            WHERE r.orphanage_id=? ORDER BY r.created_at DESC`,
+      args: [req.user.id]
+    });
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Analytics
-router.get('/analytics', auth, (req, res) => {
-  const results = {};
-  let done = 0;
-  const queries = {
-    totalDelivered: { sql: 'SELECT COUNT(*) as count FROM requests WHERE status="delivered"', method: 'get' },
-    totalPending:   { sql: 'SELECT COUNT(*) as count FROM requests WHERE status="pending"', method: 'get' },
-    totalFoods:     { sql: 'SELECT COUNT(*) as count FROM food_listings', method: 'get' },
-    totalProviders: { sql: 'SELECT COUNT(*) as count FROM users WHERE role="provider"', method: 'get' },
-    totalReceivers: { sql: 'SELECT COUNT(*) as count FROM users WHERE role="orphanage"', method: 'get' },
-    servingsDelivered: { sql: 'SELECT SUM(f.quantity) as total FROM requests r JOIN food_listings f ON r.food_id=f.id WHERE r.status="delivered"', method: 'get' },
-    foodByType:     { sql: 'SELECT food_type, COUNT(*) as count FROM food_listings GROUP BY food_type', method: 'all' },
-    foodByCategory: { sql: 'SELECT food_category, COUNT(*) as count FROM food_listings GROUP BY food_category', method: 'all' },
-    topProviders:   { sql: `SELECT u.name, u.provider_type, u.location_address, COUNT(f.id) as listing_count, SUM(f.quantity) as total_servings, MAX(f.created_at) as last_active FROM users u JOIN food_listings f ON f.provider_id=u.id GROUP BY u.id ORDER BY total_servings DESC LIMIT 6`, method: 'all' },
-    locationActivity: { sql: `SELECT u.location_address, u.name as provider_name, u.provider_type, SUM(f.quantity) as total_food, COUNT(f.id) as listings FROM food_listings f JOIN users u ON f.provider_id=u.id WHERE u.location_address IS NOT NULL AND u.location_address!='' GROUP BY u.id ORDER BY total_food DESC LIMIT 8`, method: 'all' },
-    monthlyActivity:  { sql: `SELECT strftime('%Y-%m', r.created_at) as month, COUNT(*) as requests, SUM(CASE WHEN r.status='delivered' THEN 1 ELSE 0 END) as delivered FROM requests r GROUP BY month ORDER BY month DESC LIMIT 6`, method: 'all' },
-    statusBreakdown: { sql: `SELECT status, COUNT(*) as count FROM requests GROUP BY status`, method: 'all' },
-  };
-  const keys = Object.keys(queries);
-  keys.forEach(key => {
-    db[queries[key].method](queries[key].sql, [], (err, data) => {
-      results[key] = err ? (queries[key].method === 'all' ? [] : {}) : data;
-      done++;
-      if (done === keys.length) res.json(results);
+router.get('/analytics', auth, async (req, res) => {
+  try {
+    const [
+      totalDelivered, totalPending, totalFoods,
+      totalProviders, totalReceivers, servingsDelivered,
+      foodByType, foodByCategory, topProviders,
+      locationActivity, monthlyActivity, statusBreakdown
+    ] = await Promise.all([
+      db.execute({ sql: 'SELECT COUNT(*) as count FROM requests WHERE status="delivered"', args: [] }),
+      db.execute({ sql: 'SELECT COUNT(*) as count FROM requests WHERE status="pending"', args: [] }),
+      db.execute({ sql: 'SELECT COUNT(*) as count FROM food_listings', args: [] }),
+      db.execute({ sql: 'SELECT COUNT(*) as count FROM users WHERE role="provider"', args: [] }),
+      db.execute({ sql: 'SELECT COUNT(*) as count FROM users WHERE role="orphanage"', args: [] }),
+      db.execute({ sql: 'SELECT SUM(f.quantity) as total FROM requests r JOIN food_listings f ON r.food_id=f.id WHERE r.status="delivered"', args: [] }),
+      db.execute({ sql: 'SELECT food_type, COUNT(*) as count FROM food_listings GROUP BY food_type', args: [] }),
+      db.execute({ sql: 'SELECT food_category, COUNT(*) as count FROM food_listings GROUP BY food_category', args: [] }),
+      db.execute({ sql: `SELECT u.name, u.provider_type, u.location_address, COUNT(f.id) as listing_count, SUM(f.quantity) as total_servings, MAX(f.created_at) as last_active FROM users u JOIN food_listings f ON f.provider_id=u.id GROUP BY u.id ORDER BY total_servings DESC LIMIT 6`, args: [] }),
+      db.execute({ sql: `SELECT u.location_address, u.name as provider_name, u.provider_type, SUM(f.quantity) as total_food, COUNT(f.id) as listings FROM food_listings f JOIN users u ON f.provider_id=u.id WHERE u.location_address IS NOT NULL AND u.location_address!='' GROUP BY u.id ORDER BY total_food DESC LIMIT 8`, args: [] }),
+      db.execute({ sql: `SELECT strftime('%Y-%m', r.created_at) as month, COUNT(*) as requests, SUM(CASE WHEN r.status='delivered' THEN 1 ELSE 0 END) as delivered FROM requests r GROUP BY month ORDER BY month DESC LIMIT 6`, args: [] }),
+      db.execute({ sql: 'SELECT status, COUNT(*) as count FROM requests GROUP BY status', args: [] }),
+    ]);
+
+    res.json({
+      totalDelivered: totalDelivered.rows[0],
+      totalPending: totalPending.rows[0],
+      totalFoods: totalFoods.rows[0],
+      totalProviders: totalProviders.rows[0],
+      totalReceivers: totalReceivers.rows[0],
+      servingsDelivered: servingsDelivered.rows[0],
+      foodByType: foodByType.rows,
+      foodByCategory: foodByCategory.rows,
+      topProviders: topProviders.rows,
+      locationActivity: locationActivity.rows,
+      monthlyActivity: monthlyActivity.rows,
+      statusBreakdown: statusBreakdown.rows,
     });
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
