@@ -29,6 +29,7 @@ router.post('/', auth, restrictTo('orphanage'), async (req, res) => {
       sql: 'SELECT id FROM requests WHERE food_id=? AND orphanage_id=? AND status!=?',
       args: [food_id, orphanage_id, 'rejected']
     });
+
     if (existing.rows.length > 0)
       return res.status(400).json({ message: 'Already requested' });
 
@@ -36,6 +37,7 @@ router.post('/', auth, restrictTo('orphanage'), async (req, res) => {
       sql: 'INSERT INTO requests (food_id, orphanage_id, status) VALUES (?,?,?)',
       args: [food_id, orphanage_id, 'pending']
     });
+
     res.status(201).json({ message: 'Request submitted', requestId: Number(result.lastInsertRowid) });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -46,16 +48,22 @@ router.post('/', auth, restrictTo('orphanage'), async (req, res) => {
 router.put('/status', auth, restrictTo('provider', 'admin'), async (req, res) => {
   try {
     const { request_id, status } = req.body;
+
     if (!['accepted', 'rejected'].includes(status))
       return res.status(400).json({ message: 'Invalid status' });
 
-    await db.execute({ sql: 'UPDATE requests SET status=? WHERE id=?', args: [status, request_id] });
+    await db.execute({
+      sql: 'UPDATE requests SET status=? WHERE id=?',
+      args: [status, request_id]
+    });
 
     if (status === 'accepted') {
       const dataRes = await db.execute({
         sql: `SELECT f.lat as food_lat, f.lng as food_lng, f.location_address as food_addr,
                u.lat as orphanage_lat, u.lng as orphanage_lng, u.location_address as orphanage_addr
-              FROM requests r JOIN food_listings f ON r.food_id=f.id JOIN users u ON r.orphanage_id=u.id
+              FROM requests r 
+              JOIN food_listings f ON r.food_id=f.id 
+              JOIN users u ON r.orphanage_id=u.id
               WHERE r.id=?`,
         args: [request_id]
       });
@@ -64,7 +72,11 @@ router.put('/status', auth, restrictTo('provider', 'admin'), async (req, res) =>
         const data = dataRes.rows[0];
         const routeData = buildRouteData(data, 'accepted');
 
-        const exRes = await db.execute({ sql: 'SELECT id FROM delivery WHERE request_id=?', args: [request_id] });
+        const exRes = await db.execute({
+          sql: 'SELECT id FROM delivery WHERE request_id=?',
+          args: [request_id]
+        });
+
         if (exRes.rows.length > 0) {
           await db.execute({
             sql: 'UPDATE delivery SET status=?,route_data=?,updated_at=CURRENT_TIMESTAMP WHERE request_id=?',
@@ -80,36 +92,46 @@ router.put('/status', auth, restrictTo('provider', 'admin'), async (req, res) =>
     }
 
     res.json({ message: `Request ${status}` });
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Update delivery milestone
+// Update delivery
 router.put('/delivery', auth, restrictTo('provider', 'admin'), async (req, res) => {
   try {
     const { request_id, status, partner_name, contact } = req.body;
+
     if (!['pending', 'accepted', 'out_for_delivery', 'delivered'].includes(status))
       return res.status(400).json({ message: 'Invalid delivery status' });
 
     const dataRes = await db.execute({
       sql: `SELECT f.lat as food_lat, f.lng as food_lng, f.location_address as food_addr,
              u.lat as orphanage_lat, u.lng as orphanage_lng, u.location_address as orphanage_addr
-            FROM requests r JOIN food_listings f ON r.food_id=f.id JOIN users u ON r.orphanage_id=u.id
+            FROM requests r 
+            JOIN food_listings f ON r.food_id=f.id 
+            JOIN users u ON r.orphanage_id=u.id
             WHERE r.id=?`,
       args: [request_id]
     });
 
-    const routeData = dataRes.rows.length > 0 ? buildRouteData(dataRes.rows[0], status) : null;
+    const routeData = dataRes.rows.length > 0
+      ? buildRouteData(dataRes.rows[0], status)
+      : null;
 
     await db.execute({
       sql: 'UPDATE delivery SET partner_name=?,contact=?,status=?,route_data=?,updated_at=CURRENT_TIMESTAMP WHERE request_id=?',
       args: [partner_name || 'NourishNet Volunteer', contact || 'TBA', status, routeData, request_id]
     });
 
-    await db.execute({ sql: 'UPDATE requests SET status=? WHERE id=?', args: [status, request_id] });
+    await db.execute({
+      sql: 'UPDATE requests SET status=? WHERE id=?',
+      args: [status, request_id]
+    });
 
     res.json({ message: `Delivery updated to ${status}` });
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -124,11 +146,15 @@ router.get('/my-requests', auth, restrictTo('provider'), async (req, res) => {
              u.name as orphanage_name, u.lat as orphanage_lat, u.lng as orphanage_lng,
              u.location_address as orphanage_addr,
              d.partner_name, d.contact, d.route_data, d.updated_at as delivery_updated
-            FROM requests r JOIN food_listings f ON r.food_id=f.id JOIN users u ON r.orphanage_id=u.id
+            FROM requests r 
+            JOIN food_listings f ON r.food_id=f.id 
+            JOIN users u ON r.orphanage_id=u.id
             LEFT JOIN delivery d ON d.request_id=r.id
-            WHERE f.provider_id=? ORDER BY r.created_at DESC`,
+            WHERE f.provider_id=? 
+            ORDER BY r.created_at DESC`,
       args: [req.user.id]
     });
+
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -143,11 +169,15 @@ router.get('/sent', auth, restrictTo('orphanage'), async (req, res) => {
              f.lat as food_lat, f.lng as food_lng, f.location_address as food_addr,
              u.name as provider_name, u.provider_type,
              d.partner_name, d.contact, d.route_data, d.status as delivery_status, d.updated_at as delivery_updated
-            FROM requests r JOIN food_listings f ON r.food_id=f.id JOIN users u ON f.provider_id=u.id
+            FROM requests r 
+            JOIN food_listings f ON r.food_id=f.id 
+            JOIN users u ON f.provider_id=u.id
             LEFT JOIN delivery d ON d.request_id=r.id
-            WHERE r.orphanage_id=? ORDER BY r.created_at DESC`,
+            WHERE r.orphanage_id=? 
+            ORDER BY r.created_at DESC`,
       args: [req.user.id]
     });
+
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -163,27 +193,61 @@ router.get('/analytics', auth, async (req, res) => {
       foodByType, foodByCategory, topProviders,
       locationActivity, monthlyActivity, statusBreakdown
     ] = await Promise.all([
-      db.execute({ sql: 'SELECT COUNT(*) as count FROM requests WHERE status="delivered"', args: [] }),
-      db.execute({ sql: 'SELECT COUNT(*) as count FROM requests WHERE status="pending"', args: [] }),
-      db.execute({ sql: 'SELECT COUNT(*) as count FROM food_listings', args: [] }),
-      db.execute({ sql: 'SELECT COUNT(*) as count FROM users WHERE role="provider"', args: [] }),
-      db.execute({ sql: 'SELECT COUNT(*) as count FROM users WHERE role="orphanage"', args: [] }),
-      db.execute({ sql: 'SELECT SUM(f.quantity) as total FROM requests r JOIN food_listings f ON r.food_id=f.id WHERE r.status="delivered"', args: [] }),
-      db.execute({ sql: 'SELECT food_type, COUNT(*) as count FROM food_listings GROUP BY food_type', args: [] }),
-      db.execute({ sql: 'SELECT food_category, COUNT(*) as count FROM food_listings GROUP BY food_category', args: [] }),
-      db.execute({ sql: `SELECT u.name, u.provider_type, u.location_address, COUNT(f.id) as listing_count, SUM(f.quantity) as total_servings, MAX(f.created_at) as last_active FROM users u JOIN food_listings f ON f.provider_id=u.id GROUP BY u.id ORDER BY total_servings DESC LIMIT 6`, args: [] }),
-      db.execute({ sql: `SELECT u.location_address, u.name as provider_name, u.provider_type, SUM(f.quantity) as total_food, COUNT(f.id) as listings FROM food_listings f JOIN users u ON f.provider_id=u.id WHERE u.location_address IS NOT NULL AND u.location_address!='' GROUP BY u.id ORDER BY total_food DESC LIMIT 8`, args: [] }),
-      db.execute({ sql: `SELECT strftime('%Y-%m', r.created_at) as month, COUNT(*) as requests, SUM(CASE WHEN r.status='delivered' THEN 1 ELSE 0 END) as delivered FROM requests r GROUP BY month ORDER BY month DESC LIMIT 6`, args: [] }),
-      db.execute({ sql: 'SELECT status, COUNT(*) as count FROM requests GROUP BY status', args: [] }),
+      db.execute({ sql: "SELECT COUNT(*) as count FROM requests WHERE status='delivered'", args: [] }),
+      db.execute({ sql: "SELECT COUNT(*) as count FROM requests WHERE status='pending'", args: [] }),
+      db.execute({ sql: "SELECT COUNT(*) as count FROM food_listings", args: [] }),
+      db.execute({ sql: "SELECT COUNT(*) as count FROM users WHERE role='provider'", args: [] }),
+      db.execute({ sql: "SELECT COUNT(*) as count FROM users WHERE role='orphanage'", args: [] }),
+      db.execute({ sql: "SELECT SUM(f.quantity) as total FROM requests r JOIN food_listings f ON r.food_id=f.id WHERE r.status='delivered'", args: [] }),
+
+      db.execute({ sql: "SELECT food_type, COUNT(*) as count FROM food_listings GROUP BY food_type", args: [] }),
+      db.execute({ sql: "SELECT food_category, COUNT(*) as count FROM food_listings GROUP BY food_category", args: [] }),
+
+      db.execute({
+        sql: `SELECT u.name, u.provider_type, u.location_address, COUNT(f.id) as listing_count,
+                     SUM(f.quantity) as total_servings, MAX(f.created_at) as last_active
+              FROM users u
+              JOIN food_listings f ON f.provider_id=u.id
+              GROUP BY u.id
+              ORDER BY total_servings DESC
+              LIMIT 6`,
+        args: []
+      }),
+
+      db.execute({
+        sql: `SELECT u.location_address, u.name as provider_name, u.provider_type,
+                     SUM(f.quantity) as total_food, COUNT(f.id) as listings
+              FROM food_listings f
+              JOIN users u ON f.provider_id=u.id
+              WHERE u.location_address IS NOT NULL AND u.location_address!=''
+              GROUP BY u.id
+              ORDER BY total_food DESC
+              LIMIT 8`,
+        args: []
+      }),
+
+      db.execute({
+        sql: `SELECT strftime('%Y-%m', r.created_at) as month,
+                     COUNT(*) as requests,
+                     SUM(CASE WHEN r.status='delivered' THEN 1 ELSE 0 END) as delivered
+              FROM requests r
+              GROUP BY month
+              ORDER BY month DESC
+              LIMIT 6`,
+        args: []
+      }),
+
+      db.execute({ sql: "SELECT status, COUNT(*) as count FROM requests GROUP BY status", args: [] }),
     ]);
 
-    // Convert BigInt values from Turso/libsql to plain numbers
-    const toNum = (v) => v === null || v === undefined ? 0 : Number(v);
     const fixRow = (row) => {
       const out = {};
-      for (const k of Object.keys(row)) out[k] = typeof row[k] === 'bigint' ? Number(row[k]) : row[k];
+      for (const k of Object.keys(row)) {
+        out[k] = typeof row[k] === 'bigint' ? Number(row[k]) : row[k];
+      }
       return out;
     };
+
     const fixRows = (rows) => rows.map(fixRow);
 
     res.json({
@@ -200,7 +264,9 @@ router.get('/analytics', auth, async (req, res) => {
       monthlyActivity:  fixRows(monthlyActivity.rows),
       statusBreakdown:  fixRows(statusBreakdown.rows),
     });
+
   } catch (err) {
+    console.error("ANALYTICS ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });

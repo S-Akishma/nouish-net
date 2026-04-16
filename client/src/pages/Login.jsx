@@ -1,10 +1,10 @@
-import { useState,useEffect, useContext } from 'react';
+
+import { useState, useEffect, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import { Leaf, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import AIChatbot from '../components/AIChatbot';
-
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -12,20 +12,47 @@ export default function Login() {
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState({ meals_shared: 0, ngos_served: 0 });useEffect(() => {api.get('/food/stats').then(res => setStats(res.data)).catch(() => {});}, []);
+  const [stats, setStats] = useState({ meals_shared: 0, ngos_served: 0 });
+
+  useEffect(() => {
+    api.get('/food/stats')
+      .then(res => setStats(res.data))
+      .catch(() => {});
+  }, []);
+
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const handleSubmit = async e => {
     e.preventDefault();
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
+
     try {
       const res = await api.post('/auth/login', { email, password });
-      login(res.data.token, res.data.user);
+
+      // 🔥 DEBUG: See what backend sends
+      console.log("LOGIN RESPONSE:", res.data);
+
+      // 🔥 FIX: Extract token safely
+      const token =
+        res.data.token ||
+        res.data.data?.token ||
+        res.data.accessToken;
+
+      // 🔥 STORE TOKEN (MAIN FIX)
+      localStorage.setItem("token", token);
+
+      // existing login context
+      login(token, res.data.user);
+
       navigate(res.data.user.role === 'provider' ? '/provider' : '/receiver');
+
     } catch (err) {
       setError(err.response?.data?.message || 'Invalid credentials. Please try again.');
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -36,6 +63,7 @@ export default function Login() {
           <div className="absolute top-0 left-0 w-96 h-96 bg-brand-400 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
           <div className="absolute bottom-0 right-0 w-96 h-96 bg-warm-400 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
         </div>
+
         <div className="relative">
           <Link to="/" className="flex items-center gap-2">
             <div className="w-9 h-9 bg-brand-500 rounded-xl flex items-center justify-center">
@@ -44,6 +72,7 @@ export default function Login() {
             <span className="font-display text-2xl font-bold text-white">NourishNet</span>
           </Link>
         </div>
+
         <div className="relative">
           <h2 className="font-display text-4xl font-bold text-white leading-tight mb-4">
             "Every plate shared<br />is a life changed."
@@ -52,22 +81,24 @@ export default function Login() {
             Join thousands of food donors and receivers transforming surplus into sustenance across India.
           </p>
         </div>
+
         <div className="relative grid grid-cols-2 gap-4">
-  {[
-    { value: stats.meals_shared, label: 'Meals Shared' },
-    { value: stats.ngos_served, label: 'NGOs Served' },
-  ].map(s => (
-    <div key={s.label} className="bg-earth-800/60 rounded-xl px-4 py-3 text-center border border-earth-700">
-      <p className="text-white font-bold font-display">{s.value}</p>
-      <p className="text-earth-400 text-xs">{s.label}</p>
-    </div>
-  ))}
-</div>
+          {[
+            { value: stats.meals_shared, label: 'Meals Shared' },
+            { value: stats.ngos_served, label: 'NGOs Served' },
+          ].map(s => (
+            <div key={s.label} className="bg-earth-800/60 rounded-xl px-4 py-3 text-center border border-earth-700">
+              <p className="text-white font-bold font-display">{s.value}</p>
+              <p className="text-earth-400 text-xs">{s.label}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Right panel */}
       <div className="flex-1 flex items-center justify-center p-8 bg-earth-50">
         <div className="w-full max-w-md">
+
           {/* Mobile logo */}
           <Link to="/" className="flex items-center gap-2 mb-8 lg:hidden">
             <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center">
@@ -88,26 +119,51 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="label">Email Address</label>
-              <input type="email" required value={email} onChange={e => setEmail(e.target.value)}
-                placeholder="you@example.com" className="input-field" />
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="input-field"
+              />
             </div>
+
             <div>
               <label className="label">Password</label>
               <div className="relative">
-                <input type={showPass ? 'text' : 'password'} required value={password}
-                  onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="input-field pr-12" />
-                <button type="button" onClick={() => setShowPass(v => !v)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-earth-400 hover:text-earth-600">
+                <input
+                  type={showPass ? 'text' : 'password'}
+                  required
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="input-field pr-12"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPass(v => !v)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-earth-400 hover:text-earth-600"
+                >
                   {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
-            <button type="submit" disabled={loading}
-              className="w-full py-3.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-semibold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand-200 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-semibold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand-200 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
               {loading ? (
-                <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Signing in...</>
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Signing in...
+                </>
               ) : (
-                <>Sign In <ArrowRight size={16} /></>
+                <>
+                  Sign In <ArrowRight size={16} />
+                </>
               )}
             </button>
           </form>
@@ -115,7 +171,9 @@ export default function Login() {
           <div className="mt-8 pt-6 border-t border-earth-200 text-center">
             <p className="text-earth-500 text-sm">
               New to NourishNet?{' '}
-              <Link to="/signup" className="text-brand-600 font-semibold hover:text-brand-700">Create an account</Link>
+              <Link to="/signup" className="text-brand-600 font-semibold hover:text-brand-700">
+                Create an account
+              </Link>
             </p>
           </div>
 
