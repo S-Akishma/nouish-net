@@ -106,17 +106,15 @@ router.get('/nearby', async (req, res) => {
   }
 });
 
-// Provider's own listings
+// Provider's own listings — only active, non-expired, non-delivered
 router.get('/my-listings', auth, restrictTo('provider'), async (req, res) => {
   try {
     const result = await db.execute({
-      sql: `SELECT f.*,
-              CASE WHEN f.expiry_time IS NOT NULL
-                AND datetime(f.expiry_time) <= datetime('now','+5 hours','+30 minutes')
-                THEN 1 ELSE 0 END as is_expired
+      sql: `SELECT f.*, 0 as is_expired
             FROM food_listings f
             WHERE f.provider_id = ?
             AND f.id NOT IN (SELECT food_id FROM requests WHERE status = 'delivered')
+            AND (f.expiry_time IS NULL OR datetime(f.expiry_time) > datetime('now','+5 hours','+30 minutes'))
             ORDER BY f.created_at DESC`,
       args: [req.user.id]
     });
