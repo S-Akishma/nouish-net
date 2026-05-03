@@ -36,7 +36,8 @@ export default function Signup() {
     if (!name.trim()) return setError('Name is required');
     if (!email.trim()) return setError('Email is required');
     if (!password || password.length < 6) return setError('Password must be at least 6 characters');
-
+    if (!license) return setError('License/Certificate is required');
+    
     setLoading(true); setError('');
     const data = new FormData();
     data.append('name', name.trim());
@@ -164,7 +165,7 @@ export default function Signup() {
             </div>
 
             <div className="p-5 bg-earth-50 rounded-2xl border border-earth-200 border-dashed">
-              <label className="label">Upload License / Certificate (Optional)</label>
+              <label className="label">Upload License / certificate*</label>
               <p className="text-xs text-earth-400 mb-3">
                 {role === 'provider' ? 'FSSAI or food safety certificate' : 'NGO registration certificate'} (PDF/image, max 10MB)
               </p>

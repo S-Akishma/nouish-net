@@ -132,9 +132,9 @@ export default function Overview() {
     </div>
   );
 
-  const typeData = (data?.foodByType || []).map(d => ({ label: d.food_type || 'unknown', value: d.count }));
-  const catData  = (data?.foodByCategory || []).map(d => ({ label: d.food_category || 'unknown', value: d.count }));
-  const statusData = (data?.statusBreakdown || []).map(d => ({ label: d.status, value: d.count }));
+  const typeData   = (data?.foodByType || []).map(d => ({ label: d.food_type || 'unknown', value: Number(d.count) || 0 }));
+  const catData    = (data?.foodByCategory || []).map(d => ({ label: d.food_category || 'unknown', value: Number(d.count) || 0 }));
+  const statusData = (data?.statusBreakdown || []).map(d => ({ label: d.status, value: Number(d.count) || 0 }));
 
   return (
     <div className="min-h-screen bg-earth-50 font-body">
@@ -189,13 +189,13 @@ export default function Overview() {
         )}
 
         {/* Stat cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-          <StatCard icon={Package}      label="Food Listings"   value={data?.totalFoods?.count}            color="earth" />
-          <StatCard icon={CheckCircle}  label="Delivered"        value={data?.totalDelivered?.count}        color="brand" />
-          <StatCard icon={Clock}        label="Pending"          value={data?.totalPending?.count}          color="warm" />
-          <StatCard icon={Heart}        label="Servings Given"   value={data?.servingsDelivered?.total || 0} color="red" sub="meals distributed" />
-          <StatCard icon={TrendingUp}   label="Donors"           value={data?.totalProviders?.count}        color="blue" />
-          <StatCard icon={Users}        label="Receivers"        value={data?.totalReceivers?.count}        color="earth" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">          <StatCard icon={CheckCircle}  label="Delivered"        value={data?.totalDelivered?.count}        color="brand" />
+<StatCard icon={Package}      label="Food Listings"   value={Number(data?.totalFoods?.count) || 0}            color="earth" />
+<StatCard icon={CheckCircle}  label="Delivered"        value={Number(data?.totalDelivered?.count) || 0}        color="brand" />
+<StatCard icon={Clock}        label="Pending"          value={Number(data?.totalPending?.count) || 0}          color="warm" />
+<StatCard icon={Heart}        label="Servings Given"   value={Number(data?.servingsDelivered?.total) || 0} color="red" sub="meals distributed" />
+<StatCard icon={TrendingUp}   label="Donors"           value={Number(data?.totalProviders?.count) || 0}        color="blue" />
+<StatCard icon={Users}        label="Receivers"        value={Number(data?.totalReceivers?.count) || 0}        color="earth" />
         </div>
 
         {/* Pie charts row */}

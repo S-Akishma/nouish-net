@@ -5,7 +5,7 @@ import { getChatbotResponse } from '../services/aiService';
 export default function AIChatbot({ context = '', matchData = null }) {
   const [open, setOpen]       = useState(false);
   const [messages, setMessages] = useState([
-    { role: 'assistant', text: "Hi! I'm NourishBot 🌱 Powered by Groq AI. I can help you find nearest donors, understand how expiry works, track deliveries, and more. What do you need?" }
+    { role: 'assistant', text: "Hi! I'm NourishBot. I can help you find nearest donors, understand how expiry works, track deliveries, and more. What do you need?" }
   ]);
   const [input, setInput]     = useState('');
   const [loading, setLoading] = useState(false);

@@ -81,9 +81,9 @@ router.get('/match', auth, async (req, res) => {
              u.lat as provider_lat, u.lng as provider_lng, u.location_address as provider_addr
             FROM food_listings f JOIN users u ON f.provider_id=u.id
             WHERE f.id NOT IN (
-              SELECT food_id FROM requests WHERE status NOT IN ('rejected','delivered')
+              SELECT food_id FROM requests WHERE status IN ('accepted','out_for_delivery','delivered')
             )
-            AND (f.expiry_time IS NULL OR datetime(f.expiry_time) > datetime('now'))
+            AND (f.expiry_time IS NULL OR datetime(f.expiry_time) > datetime('now','localtime'))
             ORDER BY f.created_at DESC`,
       args: []
     });
