@@ -187,7 +187,7 @@ export default function ProviderDashboard() {
             ) : (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
                       {listings.map(f => (
-                      <div key={f.id} className={`card overflow-hidden group transition-all duration-200 ${f.is_expired ? 'opacity-50 grayscale' : 'hover:shadow-md'}`}>                    
+                      <div key={f.id} className={`card overflow-hidden group transition-all duration-200 hover:shadow-md`}>                    
                       <div className="h-36 bg-earth-100 overflow-hidden relative">
                       {f.image
                         ? <img src={`/uploads/${f.image}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" alt={f.food_name} />
@@ -199,9 +199,6 @@ export default function ProviderDashboard() {
                         <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${f.food_type === 'veg' ? 'badge-veg' : f.food_type === 'vegan' ? 'bg-green-100 text-green-700' : 'badge-nonveg'}`}>
                           {f.food_type === 'veg' ? '🟢 Veg' : f.food_type === 'vegan' ? '🌿 Vegan' : f.food_type === 'jain' ? '⚪ Jain' : '🔴 Non-Veg'}
                         </span>
-                        {f.is_expired ? (
-                          <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-red-500 text-white">⏰ Expired</span>
-                        ) : null}
                       </div>
                     </div>
                     <div className="p-5">
